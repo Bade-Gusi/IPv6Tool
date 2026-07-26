@@ -207,6 +207,23 @@ namespace ipv66_重写_
             };
             grpAccess.Controls.Add(lblHint);
 
+            var btnTestIpv6 = new Button
+            {
+                Location = new Point(440, gy),
+                Size = new Size(180, 28),
+                Text = "在线检测 test-ipv6.com",
+                Cursor = Cursors.Hand,
+                TabIndex = 4,
+                FlatStyle = FlatStyle.Flat,
+                FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 200) },
+                BackColor = Color.FromArgb(240, 245, 255),
+                ForeColor = Color.FromArgb(60, 80, 140),
+                Font = new Font("Microsoft YaHei UI", 8F)
+            };
+            btnTestIpv6.Click += (_, _) => OpenUrl("https://www.test-ipv6.com/zh-CN/");
+            grpAccess.Controls.Add(btnTestIpv6);
+            tooltip.SetToolTip(btnTestIpv6, "在浏览器中打开 test-ipv6.com 进行全面的 IPv6 连通性测试");
+
             // ================================================================
             // 工具箱
             // ================================================================
@@ -552,12 +569,21 @@ namespace ipv66_重写_
             SetResult(lblPublicAddrIcon, lblPublicAddr, "公网地址", null, "检测中...");
             SetResult(lblInboundIcon, lblInbound, "入站访问", null, "检测中...");
 
+            // Ping 检测 (ICMP 常被防火墙拦截，失败不代表无 IPv6)
             bool pingOk = await PingIPv6("2400:3200::1", "阿里云 DNS")
                        || await PingIPv6("2001:4860:4860::8888", "Google DNS")
                        || await PingIPv6("240c::6666", "百度 IPv6");
 
-            SetResult(lblOutboundIcon, lblOutbound, "外网访问", pingOk,
-                pingOk ? "可访问 IPv6 互联网" : "无法访问 IPv6 互联网");
+            // HTTP 检测 (更可靠，绕过 ICMP 封锁)
+            bool httpOk = await TestHttpIPv6();
+
+            bool outboundOk = pingOk || httpOk;
+            string outMsg = outboundOk
+                ? $"可访问 IPv6 互联网 ({(httpOk ? "HTTP" : "Ping")})"
+                : "无法访问 IPv6 互联网。请访问 https://www.test-ipv6.com/ 手动验证";
+
+            SetResult(lblOutboundIcon, lblOutbound, "外网访问", outboundOk, outMsg);
+            if (!outboundOk) Log("提示: 可手动验证 https://www.test-ipv6.com/zh-CN/");
 
             bool hasPublicAddr = HasPublicIPv6();
             SetResult(lblPublicAddrIcon, lblPublicAddr, "公网地址", hasPublicAddr,
@@ -571,7 +597,7 @@ namespace ipv66_重写_
             SetResult(lblInboundIcon, lblInbound, "入站访问", inboundOk,
                 inboundOk ? "有服务监听 IPv6 端口" : "未检测到 IPv6 监听服务");
 
-            bool overall = pingOk && dnsOk;
+            bool overall = outboundOk || (hasPublicAddr && dnsOk);
             StopLoadingAnim();
             SetStatus(overall ? "IPv6 运行正常" : "IPv6 存在问题", overall);
             Log("全面检测完成。");
@@ -615,6 +641,51 @@ namespace ipv66_重写_
                 Log($"Ping {name} ({address}) 超时/错误");
                 return false;
             }
+        }
+
+        /// <summary>
+        /// HTTP(S) 请求测试 IPv6 连通性。
+        /// 绕过 ICMP 拦截，直接连接 IPv6 地址的 HTTP 服务。
+        /// </summary>
+        private async Task<bool> TestHttpIPv6()
+        {
+            // 多组 IPv6 HTTP 端点
+            var targets = new (string url, string name)[]
+            {
+                ("http://[2400:3200::1]/",      "阿里云 DNS"),
+                ("http://[2001:4860:4860::8888]/", "Google DNS"),
+            };
+            foreach (var (url, name) in targets)
+            {
+                try
+                {
+                    using var client = new HttpClient();
+                    client.Timeout = TimeSpan.FromSeconds(5);
+                    var resp = await client.GetAsync(url);
+                    Log($"HTTP 连接 {name} 成功 ({(int)resp.StatusCode})");
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Log($"HTTP 连接 {name} 失败: {ex.Message}");
+                }
+            }
+
+            // 最后的尝试: 通过主机名 (需要 DNS AAAA 解析)
+            try
+            {
+                using var client = new HttpClient();
+                client.Timeout = TimeSpan.FromSeconds(5);
+                var resp = await client.GetAsync("https://ipv6.baidu.com");
+                if (resp.IsSuccessStatusCode)
+                {
+                    Log("HTTP 连接 ipv6.baidu.com 成功，IPv6 连通正常。");
+                    return true;
+                }
+            }
+            catch { }
+
+            return false;
         }
 
         private static bool HasPublicIPv6()
