@@ -856,22 +856,59 @@ namespace ipv66_重写_
         {
             try
             {
-                var nis = NetworkInterface.GetAllNetworkInterfaces()
-                    .Where(ni => ni.OperationalStatus == OperationalStatus.Up);
-                foreach (var ni in nis)
+                // 运行 ipconfig 获取本机所有 IP 信息
+                var psi = new ProcessStartInfo("ipconfig", "")
                 {
-                    foreach (var ip in ni.GetIPProperties().UnicastAddresses)
-                    {
-                        if (ip.Address.AddressFamily != AddressFamily.InterNetworkV6)
-                            continue;
-                        if (ip.Address.IsIPv6LinkLocal || ip.Address.IsIPv6SiteLocal)
-                            continue;
-                        if (ip.Address.Equals(IPAddress.IPv6Loopback)) continue;
-                        byte first = ip.Address.GetAddressBytes()[0];
-                        if (first >= 0xFC && first <= 0xFD) continue;
-                        if (first == 0xFF) continue;
-                        return ip.Address.ToString();
-                    }
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.Default
+                };
+                var p = Process.Start(psi)!;
+                string output = p.StandardOutput.ReadToEnd();
+                p.WaitForExit(3000);
+
+                // 逐行解析，提取非链路本地、非回环的 IPv6 地址
+                using var reader = new StringReader(output);
+                string? line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    // 匹配 ipconfig 输出中的 IPv6 地址行
+                    // 中文: "IPv6 地址 . . . . . . . . . . . . : 2001:db8::1"
+                    // 中文: "临时 IPv6 地址. . . . . . . . . : 2001:db8::2"
+                    // 英文: "IPv6 Address. . . . . . . . . . : 2001:db8::1"
+                    if (!line.Contains("IPv6", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    // 提取冒号后的 IP 地址
+                    int colon = line.LastIndexOf(':');
+                    if (colon < 0) continue;
+                    string addr = line[(colon + 1)..].Trim();
+
+                    // 排除空值和无效 IP
+                    if (string.IsNullOrEmpty(addr)) continue;
+
+                    // 排除链路本地 (fe80::)
+                    if (addr.StartsWith("fe80", StringComparison.OrdinalIgnoreCase) ||
+                        addr.StartsWith("FE80")) continue;
+
+                    // 排除回环 (::1)
+                    if (addr == "::1") continue;
+
+                    // 排除唯一本地 (fc00::/7)
+                    if (addr.StartsWith("fc", StringComparison.OrdinalIgnoreCase) ||
+                        addr.StartsWith("FD")) continue;
+
+                    // 排除组播
+                    if (addr.StartsWith("ff", StringComparison.OrdinalIgnoreCase) ||
+                        addr.StartsWith("FF")) continue;
+
+                    // 排除带 % 的地址 (作用域 ID, 如 fe80::1%12)
+                    int pct = addr.IndexOf('%');
+                    if (pct > 0) addr = addr[..pct];
+
+                    // 成功获取一个公网 IPv6 地址
+                    if (addr.Contains(':')) return addr;
                 }
             }
             catch { }
