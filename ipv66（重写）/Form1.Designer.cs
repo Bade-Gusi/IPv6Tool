@@ -19,7 +19,6 @@ namespace ipv66_重写_
             // 
             ClientSize = new Size(422, 431);
             Name = "Form1";
-            ResumeLayout(false);
             // UI is built programmatically in SetupUI()
         }
     }
