@@ -826,29 +826,32 @@ namespace ipv66_重写_
 
         private bool HasPublicIPv6()
         {
+            Log("[调试] 扫描本机 IPv6 地址...");
             try
             {
-                var nis = NetworkInterface.GetAllNetworkInterfaces()
-                    .Where(ni => ni.OperationalStatus == OperationalStatus.Up);
+                var nis = NetworkInterface.GetAllNetworkInterfaces();
+                Log($"[调试] 共 {nis.Length} 个适配器");
                 foreach (var ni in nis)
                 {
+                    Log($"[调试]   {ni.Name} 状态={ni.OperationalStatus} 类型={ni.NetworkInterfaceType}");
+                    if (ni.OperationalStatus != OperationalStatus.Up) continue;
                     foreach (var ip in ni.GetIPProperties().UnicastAddresses)
                     {
-                        if (ip.Address.AddressFamily != AddressFamily.InterNetworkV6)
-                            continue;
-                        if (ip.Address.IsIPv6LinkLocal || ip.Address.IsIPv6SiteLocal)
-                            continue;
-                        if (ip.Address.Equals(IPAddress.IPv6Loopback)) continue;
+                        if (ip.Address.AddressFamily != AddressFamily.InterNetworkV6) continue;
+                        string a = ip.Address.ToString();
+                        Log($"[调试]     地址 {a}  LL={ip.Address.IsIPv6LinkLocal} SL={ip.Address.IsIPv6SiteLocal} LB={ip.Address.Equals(IPAddress.IPv6Loopback)}");
+                        if (ip.Address.IsIPv6LinkLocal || ip.Address.IsIPv6SiteLocal) { Log("[调试]       → 跳过: 链路/站点本地"); continue; }
+                        if (ip.Address.Equals(IPAddress.IPv6Loopback)) { Log("[调试]       → 跳过: 回环"); continue; }
                         byte first = ip.Address.GetAddressBytes()[0];
-                        // 排除 Unique Local Address (fc00::/7)
-                        if (first >= 0xFC && first <= 0xFD) continue;
-                        // 排除组播
-                        if (first == 0xFF) continue;
+                        if (first >= 0xFC && first <= 0xFD) { Log("[调试]       → 跳过: ULA"); continue; }
+                        if (first == 0xFF) { Log("[调试]       → 跳过: 组播"); continue; }
+                        Log("[调试]       → 是公网 IPv6!");
                         return true;
                     }
                 }
+                Log("[调试] 未找到公网 IPv6 地址");
             }
-            catch { }
+            catch (Exception ex) { Log($"[调试] 出错: {ex.Message}"); }
             return false;
         }
 
