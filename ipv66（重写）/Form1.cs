@@ -40,6 +40,16 @@ namespace ipv66_重写_
             LogBg        = Color.FromArgb(30, 30, 30),
             LogFg        = Color.FromArgb(0, 220, 0);
 
+        // ===== 游戏列表 =====
+        private static readonly (string Name, int Port)[] Games = new[]
+        {
+            ("我的世界", 25565), ("泰拉瑞亚", 7777), ("CS:GO", 27015),
+            ("Dota 2", 27015), ("无主之地 3", 7777), ("光环: 无限", 11774),
+            ("Left 4 Dead 2", 27015), ("Factorio", 34197), ("Valheim", 2456),
+            ("Minecraft 基岩版", 19132), ("CS2", 27015), ("Stardew Valley", 24642),
+        };
+        private string detectedIpv6 = "";
+
         // ===== 状态 =====
         private readonly bool isAutoStart;
         private bool ipv6Enabled;
@@ -60,6 +70,10 @@ namespace ipv66_重写_
         private ToolTip   tooltip = null!;
         private System.Windows.Forms.Timer statusTimer = null!;
         private int       dotCount;
+        // 联机工具
+        private Label     lblIpv6Addr = null!;
+        private Button    btnCopyIpv6 = null!;
+        private Panel     panelGameGrid = null!;
 
         public Form1(bool isAutoStart = false)
         {
@@ -77,8 +91,8 @@ namespace ipv66_重写_
             Icon = MakeIcon();
             Text = "IPv6 检测工具";
             AutoScaleMode = AutoScaleMode.Dpi;
-            Size = new Size(700, 720);
-            MinimumSize = new Size(660, 560);
+            Size = new Size(700, 960);
+            MinimumSize = new Size(660, 700);
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.Sizable;
             MaximizeBox = true;
@@ -328,9 +342,76 @@ namespace ipv66_重写_
             panelFooter.Controls.Add(lblOpenSource);
 
             // ================================================================
-            // 日志
+            // IPv6 联机工具
             // ================================================================
             yy = 475;
+            var grpIpv6 = new GroupBox
+            {
+                Location = new Point(x, yy),
+                Size = new Size(668, 200),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Text = " IPv6 联机地址 ",
+                Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold),
+                BackColor = BgCard
+            };
+            Controls.Add(grpIpv6);
+
+            // IPv6 地址行
+            var lblAddrTitle = new Label
+            {
+                Location = new Point(16, 28),
+                Size = new Size(100, 24),
+                Text = "你的 IPv6 地址:",
+                ForeColor = TxtSecondary,
+                Font = new Font("Microsoft YaHei UI", 9F)
+            };
+            grpIpv6.Controls.Add(lblAddrTitle);
+
+            lblIpv6Addr = new Label
+            {
+                Location = new Point(120, 28),
+                Size = new Size(380, 24),
+                Text = "正在检测...",
+                Font = new Font("Consolas", 10F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(44, 62, 80)
+            };
+            grpIpv6.Controls.Add(lblIpv6Addr);
+
+            btnCopyIpv6 = new Button
+            {
+                Location = new Point(510, 26),
+                Size = new Size(100, 26),
+                Text = "复制地址",
+                Cursor = Cursors.Hand,
+                TabIndex = 13
+            };
+            btnCopyIpv6.Click += (_, _) => CopyIpv6Address();
+            grpIpv6.Controls.Add(btnCopyIpv6);
+            tooltip.SetToolTip(btnCopyIpv6, "复制本机 IPv6 地址到剪贴板");
+
+            // 游戏表格标题
+            var lblGameTitle = new Label
+            {
+                Location = new Point(16, 62),
+                Size = new Size(200, 20),
+                Text = "支持 IPv6 联机的游戏:",
+                Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold),
+                ForeColor = TxtSecondary
+            };
+            grpIpv6.Controls.Add(lblGameTitle);
+
+            // 游戏卡片面板
+            panelGameGrid = new Panel
+            {
+                Location = new Point(16, 86),
+                Size = new Size(636, 100),
+            };
+            grpIpv6.Controls.Add(panelGameGrid);
+
+            // ================================================================
+            // 日志
+            // ================================================================
+            yy = 690;
             var lblLogTitle = new Label
             {
                 Location = new Point(x, yy),
@@ -343,7 +424,7 @@ namespace ipv66_重写_
             txtLog = new RichTextBox
             {
                 Location = new Point(x, yy + 26),
-                Size = new Size(668, 195),
+                Height = 180,
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 ReadOnly = true,
                 BackColor = LogBg,
@@ -357,6 +438,9 @@ namespace ipv66_重写_
 
             // 窗口尺寸变化时同步更新控件宽度
             Resize += (_, _) => ResizeLayout();
+
+            // 生成游戏卡片
+            SetupGameGrid();
         }
 
         private void ResizeLayout()
@@ -533,11 +617,14 @@ namespace ipv66_重写_
                         _   => $"(DisabledComponents = 0x{disabled:X2})"
                     }}");
                 }
+                if (!ipv6Enabled) UpdateIpv6Display("");
             }
             catch (Exception ex)
             {
                 Log($"检测失败: {ex.Message}");
             }
+            if (ipv6Enabled && string.IsNullOrEmpty(detectedIpv6))
+                UpdateIpv6Display("已启用 (运行全面检测获取具体地址)");
         }
 
         // ==================== 全面访问检测 ====================
@@ -588,6 +675,13 @@ namespace ipv66_重写_
                 addrMsg = "有公网 IPv6 地址 (本机检测)";
             else
                 addrMsg = "无公网 IPv6 地址";
+
+            // 更新联机工具中的 IPv6 地址显示
+            string ipv6ForShare = "";
+            if (remoteAddr && testIpv6?.Ipv6 != null) ipv6ForShare = testIpv6.Ipv6;
+            else if (localAddr) ipv6ForShare = "已启用 (请查看上方检测结果)";
+            UpdateIpv6Display(ipv6ForShare);
+
             SetResult(lblPublicAddrIcon, lblPublicAddr, "公网地址", publicAddrOk, addrMsg);
 
             // === 6. DNS 解析 (多域名) ===
@@ -786,6 +880,121 @@ namespace ipv66_重写_
                 return listeners.Any(ep => ep.AddressFamily == AddressFamily.InterNetworkV6 && ep.Port != 0);
             }
             catch { return false; }
+        }
+
+        // ==================== 联机工具 ====================
+
+        private void SetupGameGrid()
+        {
+            panelGameGrid.Controls.Clear();
+            int cardW = (panelGameGrid.ClientSize.Width - 12) / 3;
+            int cardH = 42;
+            for (int i = 0; i < Games.Length; i++)
+            {
+                var (name, port) = Games[i];
+                int col = i % 3;
+                int row = i / 3;
+                int cx = col * (cardW + 6);
+                int cy = row * (cardH + 6);
+
+                var panel = new Panel
+                {
+                    Location = new Point(cx, cy),
+                    Size = new Size(cardW, cardH),
+                    BorderStyle = BorderStyle.None,
+                    BackColor = Color.FromArgb(248, 248, 252)
+                };
+
+                var lblName = new Label
+                {
+                    Location = new Point(6, 3),
+                    Size = new Size(cardW - 12, 16),
+                    Text = $"{name}  (:{port})",
+                    Font = new Font("Microsoft YaHei UI", 8F, FontStyle.Bold),
+                    ForeColor = Color.FromArgb(44, 62, 80)
+                };
+                panel.Controls.Add(lblName);
+
+                int idx = i;
+                var btnCopy = new Button
+                {
+                    Location = new Point(6, 20),
+                    Size = new Size(cardW - 12, 20),
+                    Text = "复制联机地址",
+                    Font = new Font("Microsoft YaHei UI", 7.5F),
+                    Cursor = Cursors.Hand,
+                    TabIndex = 20 + idx,
+                    FlatStyle = FlatStyle.Flat,
+                    FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(200, 200, 215) },
+                    BackColor = Color.White
+                };
+                btnCopy.Click += (_, _) => CopyGameAddress(idx, btnCopy);
+                panel.Controls.Add(btnCopy);
+
+                panelGameGrid.Controls.Add(panel);
+            }
+        }
+
+        private void UpdateIpv6Display(string ipv6)
+        {
+            detectedIpv6 = ipv6;
+            if (lblIpv6Addr == null) return;
+            if (!string.IsNullOrEmpty(ipv6))
+            {
+                lblIpv6Addr.Text = ipv6;
+                lblIpv6Addr.ForeColor = Color.FromArgb(20, 100, 60);
+                btnCopyIpv6.Enabled = true;
+            }
+            else
+            {
+                lblIpv6Addr.Text = "未检测到 IPv6 地址";
+                lblIpv6Addr.ForeColor = Color.Gray;
+                btnCopyIpv6.Enabled = false;
+            }
+        }
+
+        private void CopyIpv6Address()
+        {
+            if (string.IsNullOrEmpty(detectedIpv6))
+            {
+                Log("没有可复制的 IPv6 地址。");
+                return;
+            }
+            try
+            {
+                Clipboard.SetText(detectedIpv6);
+                Log($"IPv6 地址已复制: {detectedIpv6}");
+                btnCopyIpv6.Text = "已复制";
+                var resetBtn = new System.Windows.Forms.Timer { Interval = 2000 };
+                resetBtn.Tick += (_, _) => { btnCopyIpv6.Text = "复制地址"; resetBtn.Stop(); };
+                resetBtn.Start();
+            }
+            catch (Exception ex)
+            {
+                Log($"复制失败: {ex.Message}");
+            }
+        }
+
+        private void CopyGameAddress(int index, Button btn)
+        {
+            if (index < 0 || index >= Games.Length) return;
+            var (name, port) = Games[index];
+            string addr = string.IsNullOrEmpty(detectedIpv6) ? "::" : detectedIpv6;
+            string text = $"[{addr}]:{port}";
+            try
+            {
+                Clipboard.SetText(text);
+                Log($"已复制 {name} 联机地址: {text}");
+                string orig = btn.Text;
+                btn.Text = "已复制";
+                var reset = new System.Windows.Forms.Timer { Interval = 2000 };
+                reset.Tick += (_, _) => { btn.Text = orig; reset.Stop(); };
+                reset.Start();
+            }
+            catch (Exception ex)
+            {
+                Log($"复制失败: {ex.Message}");
+            }
         }
 
         // ==================== 启用 / 禁用 IPv6 (立即生效) ====================
