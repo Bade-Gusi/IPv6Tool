@@ -552,34 +552,58 @@ namespace ipv66_重写_
             SetResult(lblPublicAddrIcon, lblPublicAddr, "公网地址", null, "检测中...");
             SetResult(lblInboundIcon, lblInbound, "入站访问", null, "检测中...");
 
-            // Ping 检测 (ICMP 常被防火墙拦截，失败不代表无 IPv6)
+            // === 1. test-ipv6.com API — 服务器端看到的本机 IP ===
+            var testIpv6 = await FetchTestIpv6Api();
+
+            // === 2. HTTP 直连 IPv6 地址 (绕过 ICMP 封锁) ===
+            bool httpOk = await TestHttpDirect();
+
+            // === 3. Ping (辅助) ===
             bool pingOk = await PingIPv6("2400:3200::1", "阿里云 DNS")
                        || await PingIPv6("2001:4860:4860::8888", "Google DNS")
                        || await PingIPv6("240c::6666", "百度 IPv6");
 
-            // HTTP 检测 (更可靠，绕过 ICMP 封锁)
-            bool httpOk = await TestHttpIPv6();
-
-            bool outboundOk = pingOk || httpOk;
-            string outMsg = outboundOk
-                ? $"可访问 IPv6 互联网 ({(httpOk ? "HTTP" : "Ping")})"
-                : "无法访问 IPv6 互联网";
-
+            // === 4. 外网连通性 ===
+            bool outboundOk = httpOk || pingOk || testIpv6?.HasIpv6 == true;
+            string outMsg;
+            if (testIpv6?.HasIpv6 == true)
+                outMsg = $"可访问 IPv6 互联网 (test-ipv6.com 检测到您的 IPv6: {testIpv6.Ipv6})";
+            else if (httpOk)
+                outMsg = "可访问 IPv6 互联网 (HTTP 直连成功)";
+            else if (pingOk)
+                outMsg = "可访问 IPv6 互联网 (Ping 成功)";
+            else
+                outMsg = "无法访问 IPv6 互联网";
             SetResult(lblOutboundIcon, lblOutbound, "外网访问", outboundOk, outMsg);
 
-            bool hasPublicAddr = HasPublicIPv6();
-            SetResult(lblPublicAddrIcon, lblPublicAddr, "公网地址", hasPublicAddr,
-                hasPublicAddr ? "有公网 IPv6 地址" : "无公网 IPv6 地址");
+            // === 5. 公网地址 (本地检测 + test-ipv6.com 双重确认) ===
+            bool localAddr = HasPublicIPv6();
+            bool remoteAddr = testIpv6?.HasIpv6 == true;
+            bool publicAddrOk = localAddr || remoteAddr;
 
+            string addrMsg;
+            if (remoteAddr)
+                addrMsg = $"有公网 IPv6 地址 (test-ipv6.com: {testIpv6!.Ipv6})";
+            else if (localAddr)
+                addrMsg = "有公网 IPv6 地址 (本机检测)";
+            else
+                addrMsg = "无公网 IPv6 地址";
+            SetResult(lblPublicAddrIcon, lblPublicAddr, "公网地址", publicAddrOk, addrMsg);
+
+            // === 6. DNS 解析 (多域名) ===
             bool dnsOk = await TestDnsIPv6();
-            SetResult(lblDnsIcon, lblDns, "DNS 解析", dnsOk,
-                dnsOk ? "IPv6 DNS 解析正常" : "IPv6 DNS 解析异常");
+            // test-ipv6.com 能连通说明 DNS 本质上没问题
+            bool dnsFinal = dnsOk || testIpv6 != null;
+            SetResult(lblDnsIcon, lblDns, "DNS 解析", dnsFinal,
+                dnsOk ? "IPv6 DNS 解析正常 (多域名验证)" : "DNS AAAA 记录查询异常");
 
+            // === 7. 入站监听 ===
             bool inboundOk = CheckIPv6Listening();
             SetResult(lblInboundIcon, lblInbound, "入站访问", inboundOk,
                 inboundOk ? "有服务监听 IPv6 端口" : "未检测到 IPv6 监听服务");
 
-            bool overall = outboundOk || (hasPublicAddr && dnsOk);
+            // === 8. 总评 ===
+            bool overall = outboundOk || (publicAddrOk && dnsFinal);
             StopLoadingAnim();
             SetStatus(overall ? "IPv6 运行正常" : "IPv6 存在问题", overall);
             Log("全面检测完成。");
@@ -625,36 +649,15 @@ namespace ipv66_重写_
             }
         }
 
-        /// <summary>
-        /// HTTP(S) 请求 + test-ipv6.com API 双重检测 IPv6 连通性。
-        /// </summary>
-        private async Task<bool> TestHttpIPv6()
+        // ==================== test-ipv6.com API ====================
+
+        private record TestIpv6Data(string? Ipv4, string? Ipv6, string? Country)
         {
-            bool anyOk = false;
+            public bool HasIpv6 => !string.IsNullOrEmpty(Ipv6) && Ipv6 != "::";
+        }
 
-            // 1. 直连 IPv6 地址的 HTTP 服务
-            var targets = new (string url, string name)[]
-            {
-                ("http://[2400:3200::1]/",       "阿里云 DNS"),
-                ("http://[2001:4860:4860::8888]/", "Google DNS"),
-            };
-            foreach (var (url, name) in targets)
-            {
-                try
-                {
-                    using var client = new HttpClient();
-                    client.Timeout = TimeSpan.FromSeconds(5);
-                    var resp = await client.GetAsync(url);
-                    Log($"HTTP 直连 {name} 成功 ({(int)resp.StatusCode})");
-                    anyOk = true;
-                }
-                catch (Exception ex)
-                {
-                    Log($"HTTP 直连 {name} 失败: {ex.Message}");
-                }
-            }
-
-            // 2. 请求 test-ipv6.com API 获取本机 IPv6 信息
+        private async Task<TestIpv6Data?> FetchTestIpv6Api()
+        {
             try
             {
                 using var client = new HttpClient();
@@ -669,19 +672,43 @@ namespace ipv66_重写_
                 string? country = root.TryGetProperty("country_code", out var cc) ? cc.GetString() : null;
 
                 Log($"test-ipv6.com: IPv4={ipv4 ?? "无"}, IPv6={ipv6 ?? "无"}, 地区={country ?? "未知"}");
-
                 if (!string.IsNullOrEmpty(ipv6) && ipv6 != "::")
-                {
                     Log($"test-ipv6.com 检测到本机 IPv6 地址: {ipv6}");
-                    anyOk = true;
-                }
+
+                return new TestIpv6Data(ipv4, ipv6, country);
             }
             catch (Exception ex)
             {
                 Log($"test-ipv6.com API 请求失败: {ex.Message}");
+                return null;
+            }
+        }
+
+        // ==================== HTTP 直连 ====================
+
+        private async Task<bool> TestHttpDirect()
+        {
+            var targets = new (string url, string name)[]
+            {
+                ("http://[2400:3200::1]/",       "阿里云 DNS"),
+                ("http://[2001:4860:4860::8888]/", "Google DNS"),
+            };
+            foreach (var (url, name) in targets)
+            {
+                try
+                {
+                    using var client = new HttpClient();
+                    client.Timeout = TimeSpan.FromSeconds(5);
+                    var resp = await client.GetAsync(url);
+                    Log($"HTTP 直连 {name} 成功 (HTTP {(int)resp.StatusCode})");
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Log($"HTTP 直连 {name} 失败: {ex.Message}");
+                }
             }
 
-            // 3. 主机名尝试 (依赖 DNS AAAA)
             try
             {
                 using var client = new HttpClient();
@@ -690,15 +717,17 @@ namespace ipv66_重写_
                 if (resp.IsSuccessStatusCode)
                 {
                     Log("HTTP 连接 ipv6.baidu.com 成功。");
-                    anyOk = true;
+                    return true;
                 }
             }
             catch { }
 
-            return anyOk;
+            return false;
         }
 
-        private static bool HasPublicIPv6()
+        // ==================== 公网地址检测 (本地) ====================
+
+        private bool HasPublicIPv6()
         {
             try
             {
@@ -708,11 +737,16 @@ namespace ipv66_重写_
                 {
                     foreach (var ip in ni.GetIPProperties().UnicastAddresses)
                     {
-                        if (ip.Address.AddressFamily == AddressFamily.InterNetworkV6 &&
-                            !ip.Address.IsIPv6LinkLocal &&
-                            !ip.Address.IsIPv6SiteLocal &&
-                            ip.Address.GetAddressBytes()[0] >= 0x20)
-                            return true;
+                        if (ip.Address.AddressFamily != AddressFamily.InterNetworkV6)
+                            continue;
+                        if (ip.Address.IsIPv6LinkLocal || ip.Address.IsIPv6SiteLocal)
+                            continue;
+                        byte first = ip.Address.GetAddressBytes()[0];
+                        // 排除 Unique Local Address (fc00::/7)
+                        if (first >= 0xFC && first <= 0xFD) continue;
+                        // 排除组播
+                        if (first == 0xFF) continue;
+                        return true;
                     }
                 }
             }
@@ -720,14 +754,28 @@ namespace ipv66_重写_
             return false;
         }
 
-        private static async Task<bool> TestDnsIPv6()
+        private async Task<bool> TestDnsIPv6()
         {
-            try
+            string[] domains = { "ipv6.baidu.com", "ipv6.google.com", "test-ipv6.com", "ipv6.aliyun.com" };
+            foreach (var domain in domains)
             {
-                var entries = await System.Net.Dns.GetHostEntryAsync("ipv6.baidu.com");
-                return entries.AddressList.Any(a => a.AddressFamily == AddressFamily.InterNetworkV6);
+                try
+                {
+                    var entries = await System.Net.Dns.GetHostEntryAsync(domain);
+                    bool hasV6 = entries.AddressList.Any(a => a.AddressFamily == AddressFamily.InterNetworkV6);
+                    if (hasV6)
+                    {
+                        Log($"DNS 解析 {domain} → 有 AAAA 记录");
+                        return true;
+                    }
+                    Log($"DNS 解析 {domain} → 无 AAAA 记录");
+                }
+                catch (Exception ex)
+                {
+                    Log($"DNS 解析 {domain} 失败: {ex.Message}");
+                }
             }
-            catch { return false; }
+            return false;
         }
 
         private static bool CheckIPv6Listening()
