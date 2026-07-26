@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -837,6 +838,7 @@ namespace ipv66_重写_
                             continue;
                         if (ip.Address.IsIPv6LinkLocal || ip.Address.IsIPv6SiteLocal)
                             continue;
+                        if (ip.Address.Equals(IPAddress.IPv6Loopback)) continue;
                         byte first = ip.Address.GetAddressBytes()[0];
                         // 排除 Unique Local Address (fc00::/7)
                         if (first >= 0xFC && first <= 0xFD) continue;
@@ -864,6 +866,7 @@ namespace ipv66_重写_
                             continue;
                         if (ip.Address.IsIPv6LinkLocal || ip.Address.IsIPv6SiteLocal)
                             continue;
+                        if (ip.Address.Equals(IPAddress.IPv6Loopback)) continue;
                         byte first = ip.Address.GetAddressBytes()[0];
                         if (first >= 0xFC && first <= 0xFD) continue;
                         if (first == 0xFF) continue;
@@ -964,6 +967,8 @@ namespace ipv66_重写_
 
         private void UpdateIpv6Display(string ipv6)
         {
+            // 排除回环地址
+            if (ipv6 == "::1" || ipv6 == "0:0:0:0:0:0:0:1") ipv6 = "";
             detectedIpv6 = ipv6;
             if (lblIpv6Addr == null) return;
             if (!string.IsNullOrEmpty(ipv6))
