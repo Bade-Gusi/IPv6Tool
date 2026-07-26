@@ -70,38 +70,44 @@ namespace ipv66_重写_
             DetectIPv6();
         }
 
-        // ==================== UI 构建 ====================
+        // ==================== UI ====================
 
         private void SetupUI()
         {
             Icon = MakeIcon();
             Text = "IPv6 检测工具";
             AutoScaleMode = AutoScaleMode.Dpi;
-            FormBorderStyle = FormBorderStyle.Sizable;
-            MinimumSize = new Size(660, 560);
             Size = new Size(700, 720);
+            MinimumSize = new Size(660, 560);
             StartPosition = FormStartPosition.CenterScreen;
+            FormBorderStyle = FormBorderStyle.Sizable;
+            MaximizeBox = true;
             Font = new Font("Microsoft YaHei UI", 9F);
             BackColor = BgBody;
+            Padding = new Padding(0);
 
             tooltip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 500, ReshowDelay = 200 };
             statusTimer = new System.Windows.Forms.Timer { Interval = 500 };
             statusTimer.Tick += (_, _) => AnimateStatusDots();
 
+            int x = 16;
+
             // ================================================================
-            // 顶部状态栏 (Dock=Top)
+            // 顶部: 状态大标题 (固定定位)
             // ================================================================
             panelTop = new Panel
             {
-                Dock = DockStyle.Top,
-                Height = 70,
+                Location = new Point(0, 0),
+                Size = new Size(700, 70),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 BackColor = BgHeader
             };
             Controls.Add(panelTop);
 
             lblStatus = new Label
             {
-                Dock = DockStyle.Fill,
+                Location = new Point(20, 0),
+                Size = new Size(660, 70),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Font = new Font("Microsoft YaHei UI", 18F, FontStyle.Bold),
                 ForeColor = Color.White,
@@ -109,54 +115,69 @@ namespace ipv66_重写_
             };
             panelTop.Controls.Add(lblStatus);
 
-            // ================================================================
-            // 中间面板 (Dock=Fill)
-            // ================================================================
-            var panelMid = new Panel { Dock = DockStyle.Fill };
-            Controls.Add(panelMid);
-
-            int x = 16;
+            int yy = 85;
 
             // ================================================================
-            // 大按钮区 (Dock=Top)
+            // 大按钮: 开启 / 禁用 / 刷新检测
             // ================================================================
-            var panelActions = new Panel { Dock = DockStyle.Top, Height = 55 };
-            panelMid.Controls.Add(panelActions);
-
-            btnEnableBig = MakeActionBtn("开启 IPv6", x, 8, 200, 40,
-                BtnEnable, BtnEnableHov, false);
+            btnEnableBig = new Button
+            {
+                Location = new Point(x, yy),
+                Size = new Size(200, 42),
+                Text = "开启 IPv6",
+                Font = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold),
+                BackColor = BtnEnable,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                FlatAppearance = { BorderSize = 0, MouseOverBackColor = BtnEnableHov },
+                Enabled = false,
+                Cursor = Cursors.Hand
+            };
             btnEnableBig.Click += (_, _) => SetIPv6(0, "开启");
-            panelActions.Controls.Add(btnEnableBig);
+            Controls.Add(btnEnableBig);
 
-            btnDisableBig = MakeActionBtn("禁用 IPv6", x + 212, 8, 200, 40,
-                BtnDisable, BtnDisableHov, false);
+            btnDisableBig = new Button
+            {
+                Location = new Point(x + 212, yy),
+                Size = new Size(200, 42),
+                Text = "禁用 IPv6",
+                Font = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold),
+                BackColor = BtnDisable,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                FlatAppearance = { BorderSize = 0, MouseOverBackColor = BtnDisableHov },
+                Enabled = false,
+                Cursor = Cursors.Hand
+            };
             btnDisableBig.Click += (_, _) => SetIPv6(0xFF, "禁用");
-            panelActions.Controls.Add(btnDisableBig);
+            Controls.Add(btnDisableBig);
 
             btnDetect = new Button
             {
-                Location = new Point(x + 424, 14),
-                Size = new Size(120, 28),
+                Location = new Point(x + 424, yy + 6),
+                Size = new Size(120, 30),
                 Text = "刷新检测",
                 TabIndex = 2,
                 Cursor = Cursors.Hand
             };
             btnDetect.Click += (_, _) => { DetectIPv6(); FullAccessTest(); };
-            panelActions.Controls.Add(btnDetect);
+            Controls.Add(btnDetect);
             tooltip.SetToolTip(btnDetect, "重新检测 IPv6 状态并执行全面访问测试");
 
             // ================================================================
-            // IPv6 访问能力检测 (Dock=Top)
+            // IPv6 访问能力检测
             // ================================================================
+            yy = 140;
             var grpAccess = new GroupBox
             {
-                Dock = DockStyle.Top,
-                Height = 155,
+                Location = new Point(x, yy),
+                Size = new Size(668, 140),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Text = " IPv6 访问能力检测 ",
                 Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold),
                 BackColor = BgCard
             };
-            panelMid.Controls.Add(grpAccess);
+            Controls.Add(grpAccess);
 
             int gy = 28, gl = 22, gg = 6;
             MakeResultRow(grpAccess, 24, gy, out lblOutboundIcon, out lblOutbound);
@@ -187,17 +208,19 @@ namespace ipv66_重写_
             grpAccess.Controls.Add(lblHint);
 
             // ================================================================
-            // 工具箱 (Dock=Top)
+            // 工具箱
             // ================================================================
+            yy = 295;
             var grpTools = new GroupBox
             {
-                Dock = DockStyle.Top,
-                Height = 100,
+                Location = new Point(x, yy),
+                Size = new Size(668, 90),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Text = " 工具箱 ",
                 Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold),
                 BackColor = BgCard
             };
-            panelMid.Controls.Add(grpTools);
+            Controls.Add(grpTools);
 
             int tx = 16, ty = 28, tw = 120, ti = 4;
             btnDns      = MakeToolBtn("刷新 DNS", tx, ty, tw, grpTools, ti++);
@@ -221,16 +244,18 @@ namespace ipv66_重写_
             tooltip.SetToolTip(btnExport, "将运行日志保存为文本文件");
 
             // ================================================================
-            // 底部信息栏 (Dock=Top)
+            // 底部信息栏
             // ================================================================
+            yy = 395;
             var panelFooter = new Panel
             {
-                Dock = DockStyle.Top,
-                Height = 75,
+                Location = new Point(x, yy),
+                Size = new Size(668, 70),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 BackColor = BgFooter,
                 BorderStyle = BorderStyle.FixedSingle
             };
-            panelMid.Controls.Add(panelFooter);
+            Controls.Add(panelFooter);
 
             lblAuthor = new Label
             {
@@ -303,21 +328,22 @@ namespace ipv66_重写_
             panelFooter.Controls.Add(lblOpenSource);
 
             // ================================================================
-            // 日志 (Dock=Fill — 占满剩余空间)
+            // 日志
             // ================================================================
+            yy = 475;
             var lblLogTitle = new Label
             {
-                Location = new Point(16, 0),
-                Size = new Size(100, 24),
+                Location = new Point(x, yy),
+                Size = new Size(100, 22),
                 Text = "运行日志",
                 Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold)
             };
-            panelMid.Controls.Add(lblLogTitle);
+            Controls.Add(lblLogTitle);
 
             txtLog = new RichTextBox
             {
-                Location = new Point(16, 24),
-                Width = 0,
+                Location = new Point(x, yy + 26),
+                Size = new Size(668, 195),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 ReadOnly = true,
                 BackColor = LogBg,
@@ -327,50 +353,60 @@ namespace ipv66_重写_
                 BorderStyle = BorderStyle.FixedSingle,
                 TabIndex = 20
             };
-            // 修正宽度: 减去两边 padding
-            txtLog.Width = panelMid.ClientSize.Width - 32;
-            txtLog.Height = panelMid.ClientSize.Height - txtLog.Top - 16;
-            panelMid.Controls.Add(txtLog);
-            // 窗口尺寸变化时同步调整日志宽度和高度
-            panelMid.Resize += (_, _) =>
+            Controls.Add(txtLog);
+
+            // 窗口尺寸变化时同步更新控件宽度
+            Resize += (_, _) => ResizeLayout();
+        }
+
+        private void ResizeLayout()
+        {
+            if (panelTop == null) return;
+            int w = ClientSize.Width;
+            int x = 16;
+            int innerW = w - 32;
+
+            // 顶栏
+            panelTop.Width = w;
+
+            // 顶栏文字
+            lblStatus.Width = w - 40;
+
+            // GroupBoxes
+            foreach (Control c in Controls)
             {
-                txtLog.Width  = panelMid.ClientSize.Width - 32;
-                txtLog.Height = panelMid.ClientSize.Height - txtLog.Top - 16;
-            };
+                if (c is GroupBox && c.Location.X == x && c.Anchor.HasFlag(AnchorStyles.Right))
+                    c.Width = innerW;
+            }
+
+            // 大按钮 + 刷新检测 (固定宽度，右对齐不适用，保持左对齐即可)
+
+            // 底部栏
+            foreach (Control c in Controls)
+            {
+                if (c is Panel && c.Location.X == x && c.Anchor.HasFlag(AnchorStyles.Right) && c != panelTop)
+                    c.Width = innerW;
+            }
+
+            // 日志
+            txtLog.Width = innerW;
+            txtLog.Height = ClientSize.Height - txtLog.Top - 16;
         }
 
         // ==================== UI 辅助 ====================
 
-        private static Button MakeActionBtn(string text, int x, int y, int w, int h,
-            Color color, Color hover, bool enabled)
+        private static Label MakeResultLabel(int x, int y, Control parent)
         {
-            return new Button
+            var lb = new Label
             {
                 Location = new Point(x, y),
-                Size = new Size(w, h),
-                Text = text,
-                Font = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold),
-                BackColor = color,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                FlatAppearance = { BorderSize = 0, MouseOverBackColor = hover },
-                Enabled = enabled,
-                Cursor = Cursors.Hand
+                Size = new Size(300, 22),
+                Text = "待检测",
+                ForeColor = TxtSecondary,
+                Font = new Font("Microsoft YaHei UI", 9F)
             };
-        }
-
-        private static Button MakeToolBtn(string text, int x, int y, int w, Control parent, int tab)
-        {
-            var btn = new Button
-            {
-                Location = new Point(x, y),
-                Size = new Size(w, 28),
-                Text = text,
-                TabIndex = tab,
-                Cursor = Cursors.Hand
-            };
-            parent.Controls.Add(btn);
-            return btn;
+            parent.Controls.Add(lb);
+            return lb;
         }
 
         private static void MakeResultRow(Control parent, int x, int y,
@@ -396,6 +432,20 @@ namespace ipv66_重写_
                 Font = new Font("Microsoft YaHei UI", 9F)
             };
             parent.Controls.Add(text);
+        }
+
+        private static Button MakeToolBtn(string text, int x, int y, int w, Control parent, int tab)
+        {
+            var btn = new Button
+            {
+                Location = new Point(x, y),
+                Size = new Size(w, 28),
+                Text = text,
+                TabIndex = tab,
+                Cursor = Cursors.Hand
+            };
+            parent.Controls.Add(btn);
+            return btn;
         }
 
         private void Log(string msg)
@@ -604,7 +654,7 @@ namespace ipv66_重写_
             catch { return false; }
         }
 
-        // ==================== 启用 / 禁用 IPv6 ====================
+        // ==================== 启用 / 禁用 IPv6 (立即生效) ====================
 
         private void SetIPv6(int value, string label)
         {
@@ -616,31 +666,104 @@ namespace ipv66_重写_
                 return;
             }
 
-            var r = MessageBox.Show($"确定要{label} IPv6 吗？\n修改注册表后需要重启才能完全生效。",
+            bool isEnable = value == 0;
+            var r = MessageBox.Show(
+                isEnable
+                    ? "确定要开启 IPv6 吗？\n\n将执行以下操作：\n• 修改注册表 DisabledComponents = 0（持久化）\n• 重启所有网络适配器使 IPv6 立即生效\n\n注意：重启网卡时网络会短暂断开。"
+                    : "确定要禁用 IPv6 吗？\n\n将执行以下操作：\n• 修改注册表 DisabledComponents = 0xFF（持久化）\n• 重启所有网络适配器使 IPv6 立即生效\n\n注意：重启网卡时网络会短暂断开。",
                 label + " IPv6", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (r != DialogResult.Yes) return;
 
             try
             {
+                // 1. 写注册表 (持久化)
                 using var key = Registry.LocalMachine.OpenSubKey(
                     @"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters", writable: true)
-                    ?? throw new Exception("无法打开注册表键");
+                    ?? throw new Exception("无法打开注册表键，请确认以管理员身份运行");
 
                 key.SetValue("DisabledComponents", value, RegistryValueKind.DWord);
-                Log($"已设置 DisabledComponents = 0x{value:X2}，IPv6 已{label}。");
 
-                var ok = value == 0;
-                SetStatus($"IPv6 已{label}（重启后生效）", ok);
+                // 2. 重启网络适配器使配置立即生效
+                Log("注册表已更新，正在重启网络适配器使 IPv6 立即生效...");
+                RestartNetworkAdapters();
+
+                Log($"IPv6 已{label}（立即生效 + 重启后持久化）。");
+                var ok = isEnable;
+                SetStatus($"IPv6 已{label}（无需重启）", ok);
                 btnEnableBig.Enabled  = !ok;
                 btnDisableBig.Enabled = ok;
 
-                if (MessageBox.Show("设置成功，需要重启才能完全生效。\n立即重启？",
-                        "需要重启", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-                    Process.Start("shutdown", "/r /t 5");
+                // 3. 重新检测 IPv6 状态
+                DetectIPv6();
+                FullAccessTest();
             }
             catch (Exception ex)
             {
                 Log($"操作失败: {ex.Message}");
+                MessageBox.Show($"操作失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// 重启所有活跃的网络适配器，使 IPv6 配置即时生效。
+        /// 先禁用再启用，通过 netsh 实现。
+        /// </summary>
+        private void RestartNetworkAdapters()
+        {
+            try
+            {
+                var adapters = NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(ni => ni.OperationalStatus == OperationalStatus.Up
+                              && ni.NetworkInterfaceType != NetworkInterfaceType.Loopback
+                              && ni.NetworkInterfaceType != NetworkInterfaceType.Tunnel)
+                    .ToList();
+
+                if (adapters.Count == 0)
+                {
+                    Log("未找到需要重启的网络适配器。");
+                    return;
+                }
+
+                Log($"找到 {adapters.Count} 个活跃适配器，正在重启...");
+
+                foreach (var ni in adapters)
+                {
+                    string name = ni.Name;
+                    Log($"  重启适配器: {name}");
+
+                    // 禁用
+                    var psiDisable = new ProcessStartInfo("netsh",
+                        $"interface set interface \"{name}\" admin=disable")
+                    {
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    var pDisable = Process.Start(psiDisable)!;
+                    pDisable.WaitForExit(5000);
+
+                    // 启用
+                    var psiEnable = new ProcessStartInfo("netsh",
+                        $"interface set interface \"{name}\" admin=enabled")
+                    {
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    var pEnable = Process.Start(psiEnable)!;
+                    pEnable.WaitForExit(5000);
+
+                    Log($"  适配器 {name} 重启完成。");
+                }
+
+                Log("所有适配器已重启，IPv6 配置已生效。");
+            }
+            catch (Exception ex)
+            {
+                Log($"重启适配器时出错: {ex.Message}");
+                Log("提示: 部分适配器可能未重启，IPv6 配置将在下次重启后生效。");
             }
         }
 
@@ -753,7 +876,6 @@ namespace ipv66_重写_
 
             if (chkAutoStart.Checked)
             {
-                // 注册自启动时附带 --autostart 参数，以便启动时区分场景
                 key.SetValue("IPv6Tool", $"\"{Application.ExecutablePath}\" --autostart");
                 Log("已添加开机自启动。");
             }
@@ -872,6 +994,12 @@ namespace ipv66_重写_
             {
                 BeginInvoke(() => ShowAutoStartCountdown());
             }
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            ResizeLayout();
         }
 
         // ==================== 开机自启动倒计时 ====================
