@@ -36,10 +36,14 @@ namespace ipv66_重写_
             BtnDisable   = Color.FromArgb(192, 57, 43),
             BtnDisableHov= Color.FromArgb(224, 72, 58),
             BtnGitHub    = Color.FromArgb(36, 41, 46),
-            TxtPrimary   = Color.FromArgb(44, 62, 80),
             TxtSecondary = Color.FromArgb(127, 140, 141),
             LogBg        = Color.FromArgb(30, 30, 30),
             LogFg        = Color.FromArgb(0, 220, 0);
+
+        // ===== 状态 =====
+        private readonly bool isAutoStart;
+        private bool ipv6Enabled;
+        private bool ipv6Detected;
 
         // ===== 控件 =====
         private Label     lblStatus = null!;
@@ -57,8 +61,9 @@ namespace ipv66_重写_
         private System.Windows.Forms.Timer statusTimer = null!;
         private int       dotCount;
 
-        public Form1()
+        public Form1(bool isAutoStart = false)
         {
+            this.isAutoStart = isAutoStart;
             InitializeComponent();
             SetupUI();
             CheckAutoStart();
@@ -71,37 +76,32 @@ namespace ipv66_重写_
         {
             Icon = MakeIcon();
             Text = "IPv6 检测工具";
+            AutoScaleMode = AutoScaleMode.Dpi;
+            FormBorderStyle = FormBorderStyle.Sizable;
+            MinimumSize = new Size(660, 560);
             Size = new Size(700, 720);
-            MinimumSize = Size;
-            MaximumSize = Size;
             StartPosition = FormStartPosition.CenterScreen;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
             Font = new Font("Microsoft YaHei UI", 9F);
             BackColor = BgBody;
 
             tooltip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 500, ReshowDelay = 200 };
-
             statusTimer = new System.Windows.Forms.Timer { Interval = 500 };
             statusTimer.Tick += (_, _) => AnimateStatusDots();
 
-            int x = 16;
-
             // ================================================================
-            // 顶部状态栏
+            // 顶部状态栏 (Dock=Top)
             // ================================================================
             panelTop = new Panel
             {
-                Location = new Point(0, 0),
-                Size = new Size(700, 70),
+                Dock = DockStyle.Top,
+                Height = 70,
                 BackColor = BgHeader
             };
             Controls.Add(panelTop);
 
             lblStatus = new Label
             {
-                Location = new Point(20, 0),
-                Size = new Size(660, 70),
+                Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleCenter,
                 Font = new Font("Microsoft YaHei UI", 18F, FontStyle.Bold),
                 ForeColor = Color.White,
@@ -109,46 +109,54 @@ namespace ipv66_重写_
             };
             panelTop.Controls.Add(lblStatus);
 
-            int yy = 85;
+            // ================================================================
+            // 中间面板 (Dock=Fill)
+            // ================================================================
+            var panelMid = new Panel { Dock = DockStyle.Fill };
+            Controls.Add(panelMid);
+
+            int x = 16;
 
             // ================================================================
-            // 大按钮: 开启 / 禁用 + 刷新
+            // 大按钮区 (Dock=Top)
             // ================================================================
-            btnEnableBig = MakeActionBtn("开启 IPv6", x, yy, 200, 42,
+            var panelActions = new Panel { Dock = DockStyle.Top, Height = 55 };
+            panelMid.Controls.Add(panelActions);
+
+            btnEnableBig = MakeActionBtn("开启 IPv6", x, 8, 200, 40,
                 BtnEnable, BtnEnableHov, false);
             btnEnableBig.Click += (_, _) => SetIPv6(0, "开启");
-            Controls.Add(btnEnableBig);
+            panelActions.Controls.Add(btnEnableBig);
 
-            btnDisableBig = MakeActionBtn("禁用 IPv6", x + 212, yy, 200, 42,
+            btnDisableBig = MakeActionBtn("禁用 IPv6", x + 212, 8, 200, 40,
                 BtnDisable, BtnDisableHov, false);
             btnDisableBig.Click += (_, _) => SetIPv6(0xFF, "禁用");
-            Controls.Add(btnDisableBig);
+            panelActions.Controls.Add(btnDisableBig);
 
             btnDetect = new Button
             {
-                Location = new Point(x + 424, yy + 6),
-                Size = new Size(120, 30),
+                Location = new Point(x + 424, 14),
+                Size = new Size(120, 28),
                 Text = "刷新检测",
                 TabIndex = 2,
                 Cursor = Cursors.Hand
             };
             btnDetect.Click += (_, _) => { DetectIPv6(); FullAccessTest(); };
-            Controls.Add(btnDetect);
+            panelActions.Controls.Add(btnDetect);
             tooltip.SetToolTip(btnDetect, "重新检测 IPv6 状态并执行全面访问测试");
 
             // ================================================================
-            // IPv6 访问能力检测
+            // IPv6 访问能力检测 (Dock=Top)
             // ================================================================
-            yy = 140;
             var grpAccess = new GroupBox
             {
-                Location = new Point(x, yy),
-                Size = new Size(668, 140),
+                Dock = DockStyle.Top,
+                Height = 155,
                 Text = " IPv6 访问能力检测 ",
                 Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold),
                 BackColor = BgCard
             };
-            Controls.Add(grpAccess);
+            panelMid.Controls.Add(grpAccess);
 
             int gy = 28, gl = 22, gg = 6;
             MakeResultRow(grpAccess, 24, gy, out lblOutboundIcon, out lblOutbound);
@@ -179,47 +187,50 @@ namespace ipv66_重写_
             grpAccess.Controls.Add(lblHint);
 
             // ================================================================
-            // 工具箱
+            // 工具箱 (Dock=Top)
             // ================================================================
-            yy = 295;
             var grpTools = new GroupBox
             {
-                Location = new Point(x, yy),
-                Size = new Size(668, 90),
+                Dock = DockStyle.Top,
+                Height = 100,
                 Text = " 工具箱 ",
                 Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold),
                 BackColor = BgCard
             };
-            Controls.Add(grpTools);
+            panelMid.Controls.Add(grpTools);
 
             int tx = 16, ty = 28, tw = 120, ti = 4;
             btnDns      = MakeToolBtn("刷新 DNS", tx, ty, tw, grpTools, ti++);
             btnDns.Click += (_, _) => RunCmd("ipconfig", "/flushdns");
+            tooltip.SetToolTip(btnDns, "执行 ipconfig /flushdns 清除 DNS 缓存");
 
             btnNetReset = MakeToolBtn("重置网络", tx += tw + 8, ty, tw, grpTools, ti++);
             btnNetReset.Click += (_, _) => RunCmd("netsh", "int ip reset");
+            tooltip.SetToolTip(btnNetReset, "执行 netsh int ip reset 重置 TCP/IP 堆栈");
 
             btnAdapters = MakeToolBtn("适配器列表", tx += tw + 8, ty, tw, grpTools, ti++);
             btnAdapters.Click += (_, _) => ListAdapters();
+            tooltip.SetToolTip(btnAdapters, "列出所有网络适配器及其 IPv6 状态");
 
             btnCopy     = MakeToolBtn("复制信息", tx += tw + 8, ty, tw, grpTools, ti++);
             btnCopy.Click += (_, _) => CopyLog();
+            tooltip.SetToolTip(btnCopy, "将运行日志复制到剪贴板");
 
             btnExport   = MakeToolBtn("导出日志", tx += tw + 8, ty, tw, grpTools, ti++);
             btnExport.Click += (_, _) => ExportLog();
+            tooltip.SetToolTip(btnExport, "将运行日志保存为文本文件");
 
             // ================================================================
-            // 底部信息栏
+            // 底部信息栏 (Dock=Top)
             // ================================================================
-            yy = 395;
             var panelFooter = new Panel
             {
-                Location = new Point(x, yy),
-                Size = new Size(668, 70),
+                Dock = DockStyle.Top,
+                Height = 75,
                 BackColor = BgFooter,
                 BorderStyle = BorderStyle.FixedSingle
             };
-            Controls.Add(panelFooter);
+            panelMid.Controls.Add(panelFooter);
 
             lblAuthor = new Label
             {
@@ -269,7 +280,7 @@ namespace ipv66_重写_
             };
             chkAutoStart.CheckedChanged += (_, _) => ToggleAutoStart();
             panelFooter.Controls.Add(chkAutoStart);
-            tooltip.SetToolTip(chkAutoStart, "开机时自动运行本程序");
+            tooltip.SetToolTip(chkAutoStart, "开机时自动运行本程序，检测到 IPv6 已开启则自动退出");
 
             lblVersion = new Label
             {
@@ -292,22 +303,22 @@ namespace ipv66_重写_
             panelFooter.Controls.Add(lblOpenSource);
 
             // ================================================================
-            // 日志
+            // 日志 (Dock=Fill — 占满剩余空间)
             // ================================================================
-            yy = 475;
             var lblLogTitle = new Label
             {
-                Location = new Point(x, yy),
-                Size = new Size(100, 22),
+                Location = new Point(16, 0),
+                Size = new Size(100, 24),
                 Text = "运行日志",
                 Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold)
             };
-            Controls.Add(lblLogTitle);
+            panelMid.Controls.Add(lblLogTitle);
 
             txtLog = new RichTextBox
             {
-                Location = new Point(x, yy + 26),
-                Size = new Size(668, 195),
+                Location = new Point(16, 24),
+                Width = 0,
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 ReadOnly = true,
                 BackColor = LogBg,
                 ForeColor = LogFg,
@@ -316,7 +327,16 @@ namespace ipv66_重写_
                 BorderStyle = BorderStyle.FixedSingle,
                 TabIndex = 20
             };
-            Controls.Add(txtLog);
+            // 修正宽度: 减去两边 padding
+            txtLog.Width = panelMid.ClientSize.Width - 32;
+            txtLog.Height = panelMid.ClientSize.Height - txtLog.Top - 16;
+            panelMid.Controls.Add(txtLog);
+            // 窗口尺寸变化时同步调整日志宽度和高度
+            panelMid.Resize += (_, _) =>
+            {
+                txtLog.Width  = panelMid.ClientSize.Width - 32;
+                txtLog.Height = panelMid.ClientSize.Height - txtLog.Top - 16;
+            };
         }
 
         // ==================== UI 辅助 ====================
@@ -394,16 +414,13 @@ namespace ipv66_重写_
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Color.Transparent);
 
-            // 画圆环 (代表网络/连接)
             using var pen = new Pen(Color.DodgerBlue, 2.5f);
             g.DrawEllipse(pen, 4, 4, 24, 24);
             g.DrawEllipse(pen, 10, 10, 12, 12);
 
-            // 中心点
             using var brush = new SolidBrush(Color.DodgerBlue);
             g.FillEllipse(brush, 13, 13, 6, 6);
 
-            // 斜线 (代表 IPv6)
             using var pen2 = new Pen(Color.DodgerBlue, 2);
             g.DrawLine(pen2, 6, 6, 26, 26);
             g.DrawLine(pen2, 26, 6, 6, 26);
@@ -422,9 +439,7 @@ namespace ipv66_重写_
 
         private void StartLoadingAnim()
         {
-            dotCount = 0;
-            lblStatus.Text = "检测中";
-            statusTimer.Start();
+            dotCount = 0; lblStatus.Text = "检测中"; statusTimer.Start();
         }
 
         private void StopLoadingAnim() => statusTimer.Stop();
@@ -440,7 +455,10 @@ namespace ipv66_重写_
                     @"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters");
                 int disabled = key != null ? (int)(key.GetValue("DisabledComponents", 0) ?? 0) : 0;
 
-                if (disabled == 0)
+                ipv6Enabled = disabled == 0;
+                ipv6Detected = true;
+
+                if (ipv6Enabled)
                 {
                     SetStatus("IPv6 已启用", true);
                     btnEnableBig.Enabled = false;
@@ -508,23 +526,18 @@ namespace ipv66_重写_
         {
             if (ok == true)
             {
-                icon.Text = "\u2713";
-                icon.ForeColor = Color.Green;
-                text.Text = $"{label}: {msg}";
-                text.ForeColor = Color.Green;
+                icon.Text = "\u2713"; icon.ForeColor = Color.Green;
+                text.Text = $"{label}: {msg}"; text.ForeColor = Color.Green;
             }
             else if (ok == false)
             {
-                icon.Text = "\u2717";
-                icon.ForeColor = Color.Red;
-                text.Text = $"{label}: {msg}";
-                text.ForeColor = Color.Red;
+                icon.Text = "\u2717"; icon.ForeColor = Color.Red;
+                text.Text = $"{label}: {msg}"; text.ForeColor = Color.Red;
             }
             else
             {
                 icon.Text = "";
-                text.Text = $"{label}: {msg}";
-                text.ForeColor = TxtSecondary;
+                text.Text = $"{label}: {msg}"; text.ForeColor = TxtSecondary;
             }
         }
 
@@ -557,8 +570,7 @@ namespace ipv66_重写_
                     .Where(ni => ni.OperationalStatus == OperationalStatus.Up);
                 foreach (var ni in nis)
                 {
-                    var ips = ni.GetIPProperties().UnicastAddresses;
-                    foreach (var ip in ips)
+                    foreach (var ip in ni.GetIPProperties().UnicastAddresses)
                     {
                         if (ip.Address.AddressFamily == AddressFamily.InterNetworkV6 &&
                             !ip.Address.IsIPv6LinkLocal &&
@@ -741,7 +753,8 @@ namespace ipv66_重写_
 
             if (chkAutoStart.Checked)
             {
-                key.SetValue("IPv6Tool", $"\"{Application.ExecutablePath}\"");
+                // 注册自启动时附带 --autostart 参数，以便启动时区分场景
+                key.SetValue("IPv6Tool", $"\"{Application.ExecutablePath}\" --autostart");
                 Log("已添加开机自启动。");
             }
             else
@@ -839,14 +852,106 @@ namespace ipv66_重写_
                 .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
         }
 
+        // ==================== 生命周期 ====================
+
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
             if (!IsAdmin())
+                MessageBox.Show("当前未以管理员身份运行。\n启用/禁用 IPv6 以及刷新DNS、重置网络等操作需要管理员权限。\n\n建议关闭程序后右键 → 以管理员身份运行。",
+                    "权限提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            if (!isAutoStart) return;
+            if (!ipv6Detected) return;
+
+            if (ipv6Enabled)
             {
-                Log("未以管理员身份运行，启用/禁用 IPv6 和系统命令将受限。");
-                Log("建议: 右键程序 → 以管理员身份运行");
+                BeginInvoke(() => ShowAutoStartCountdown());
             }
+        }
+
+        // ==================== 开机自启动倒计时 ====================
+
+        private void ShowAutoStartCountdown()
+        {
+            using var dlg = new Form
+            {
+                Text = "IPv6 检测工具",
+                Size = new Size(430, 170),
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition = FormStartPosition.CenterParent,
+                MinimizeBox = false,
+                MaximizeBox = false,
+                ShowInTaskbar = false,
+                ControlBox = false,
+                BackColor = Color.White,
+                Font = new Font("Microsoft YaHei UI", 9F)
+            };
+
+            int seconds = 10;
+            var lbl = new Label
+            {
+                Location = new Point(20, 20),
+                Size = new Size(390, 50),
+                Text = $"检测到 IPv6 已开启，程序将在 {seconds} 秒后自动关闭",
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(44, 62, 80)
+            };
+            dlg.Controls.Add(lbl);
+
+            var btnExit = new Button
+            {
+                Location = new Point(90, 90),
+                Size = new Size(110, 32),
+                Text = "立即退出",
+                Cursor = Cursors.Hand,
+                BackColor = BtnDisable,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                FlatAppearance = { BorderSize = 0 }
+            };
+            btnExit.Click += (_, _) => { dlg.DialogResult = DialogResult.Yes; dlg.Close(); };
+            dlg.Controls.Add(btnExit);
+
+            var btnStay = new Button
+            {
+                Location = new Point(220, 90),
+                Size = new Size(120, 32),
+                Text = "取消并留在程序",
+                Cursor = Cursors.Hand,
+                BackColor = BtnEnable,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                FlatAppearance = { BorderSize = 0 }
+            };
+            btnStay.Click += (_, _) => { dlg.DialogResult = DialogResult.No; dlg.Close(); };
+            dlg.Controls.Add(btnStay);
+
+            var timer = new System.Windows.Forms.Timer { Interval = 1000 };
+            timer.Tick += (_, _) =>
+            {
+                seconds--;
+                lbl.Text = $"检测到 IPv6 已开启，程序将在 {seconds} 秒后自动关闭";
+                if (seconds <= 0)
+                {
+                    timer.Stop();
+                    dlg.DialogResult = DialogResult.Yes;
+                    dlg.Close();
+                }
+            };
+            timer.Start();
+
+            dlg.Shown += (_, _) => timer.Start();
+            dlg.FormClosing += (_, _) => timer.Stop();
+
+            dlg.ShowDialog(this);
+            if (dlg.DialogResult == DialogResult.Yes)
+                Close();
         }
     }
 }
