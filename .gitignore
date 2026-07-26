@@ -1,0 +1,13 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.sln.docstates
+.vs/
+
+## IDE
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
