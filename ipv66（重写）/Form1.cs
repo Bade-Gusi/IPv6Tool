@@ -676,10 +676,12 @@ namespace ipv66_重写_
             else
                 addrMsg = "无公网 IPv6 地址";
 
-            // 更新联机工具中的 IPv6 地址显示
+            // 更新联机工具中的 IPv6 地址显示 (优先 test-ipv6.com，其次本地)
             string ipv6ForShare = "";
-            if (remoteAddr && testIpv6?.Ipv6 != null) ipv6ForShare = testIpv6.Ipv6;
-            else if (localAddr) ipv6ForShare = "已启用 (请查看上方检测结果)";
+            if (remoteAddr && testIpv6?.Ipv6 != null)
+                ipv6ForShare = testIpv6.Ipv6;
+            else if (localAddr)
+                ipv6ForShare = GetPublicIPv6Address() ?? "已启用 (获取地址失败)";
             UpdateIpv6Display(ipv6ForShare);
 
             SetResult(lblPublicAddrIcon, lblPublicAddr, "公网地址", publicAddrOk, addrMsg);
@@ -846,6 +848,31 @@ namespace ipv66_重写_
             }
             catch { }
             return false;
+        }
+
+        private string? GetPublicIPv6Address()
+        {
+            try
+            {
+                var nis = NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(ni => ni.OperationalStatus == OperationalStatus.Up);
+                foreach (var ni in nis)
+                {
+                    foreach (var ip in ni.GetIPProperties().UnicastAddresses)
+                    {
+                        if (ip.Address.AddressFamily != AddressFamily.InterNetworkV6)
+                            continue;
+                        if (ip.Address.IsIPv6LinkLocal || ip.Address.IsIPv6SiteLocal)
+                            continue;
+                        byte first = ip.Address.GetAddressBytes()[0];
+                        if (first >= 0xFC && first <= 0xFD) continue;
+                        if (first == 0xFF) continue;
+                        return ip.Address.ToString();
+                    }
+                }
+            }
+            catch { }
+            return null;
         }
 
         private async Task<bool> TestDnsIPv6()
@@ -1330,13 +1357,17 @@ namespace ipv66_重写_
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            if (!isAutoStart) return;
-            if (!ipv6Detected) return;
 
-            if (ipv6Enabled)
+            // 启动后自动运行全面检测 (填充 IPv6 地址、连通性等)
+            BeginInvoke(async () =>
             {
-                BeginInvoke(() => ShowAutoStartCountdown());
-            }
+                await Task.Delay(500);
+                FullAccessTest();
+
+                // 开机自启 + IPv6 已开启 → 倒计时退出
+                if (isAutoStart && ipv6Detected && ipv6Enabled)
+                    ShowAutoStartCountdown();
+            });
         }
 
         protected override void OnResize(EventArgs e)
