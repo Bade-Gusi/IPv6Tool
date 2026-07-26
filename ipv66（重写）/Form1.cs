@@ -207,23 +207,6 @@ namespace ipv66_重写_
             };
             grpAccess.Controls.Add(lblHint);
 
-            var btnTestIpv6 = new Button
-            {
-                Location = new Point(440, gy),
-                Size = new Size(180, 28),
-                Text = "在线检测 test-ipv6.com",
-                Cursor = Cursors.Hand,
-                TabIndex = 4,
-                FlatStyle = FlatStyle.Flat,
-                FlatAppearance = { BorderSize = 1, BorderColor = Color.FromArgb(180, 180, 200) },
-                BackColor = Color.FromArgb(240, 245, 255),
-                ForeColor = Color.FromArgb(60, 80, 140),
-                Font = new Font("Microsoft YaHei UI", 8F)
-            };
-            btnTestIpv6.Click += (_, _) => OpenUrl("https://www.test-ipv6.com/zh-CN/");
-            grpAccess.Controls.Add(btnTestIpv6);
-            tooltip.SetToolTip(btnTestIpv6, "在浏览器中打开 test-ipv6.com 进行全面的 IPv6 连通性测试");
-
             // ================================================================
             // 工具箱
             // ================================================================
@@ -580,10 +563,9 @@ namespace ipv66_重写_
             bool outboundOk = pingOk || httpOk;
             string outMsg = outboundOk
                 ? $"可访问 IPv6 互联网 ({(httpOk ? "HTTP" : "Ping")})"
-                : "无法访问 IPv6 互联网。请访问 https://www.test-ipv6.com/ 手动验证";
+                : "无法访问 IPv6 互联网";
 
             SetResult(lblOutboundIcon, lblOutbound, "外网访问", outboundOk, outMsg);
-            if (!outboundOk) Log("提示: 可手动验证 https://www.test-ipv6.com/zh-CN/");
 
             bool hasPublicAddr = HasPublicIPv6();
             SetResult(lblPublicAddrIcon, lblPublicAddr, "公网地址", hasPublicAddr,
@@ -644,15 +626,16 @@ namespace ipv66_重写_
         }
 
         /// <summary>
-        /// HTTP(S) 请求测试 IPv6 连通性。
-        /// 绕过 ICMP 拦截，直接连接 IPv6 地址的 HTTP 服务。
+        /// HTTP(S) 请求 + test-ipv6.com API 双重检测 IPv6 连通性。
         /// </summary>
         private async Task<bool> TestHttpIPv6()
         {
-            // 多组 IPv6 HTTP 端点
+            bool anyOk = false;
+
+            // 1. 直连 IPv6 地址的 HTTP 服务
             var targets = new (string url, string name)[]
             {
-                ("http://[2400:3200::1]/",      "阿里云 DNS"),
+                ("http://[2400:3200::1]/",       "阿里云 DNS"),
                 ("http://[2001:4860:4860::8888]/", "Google DNS"),
             };
             foreach (var (url, name) in targets)
@@ -662,16 +645,43 @@ namespace ipv66_重写_
                     using var client = new HttpClient();
                     client.Timeout = TimeSpan.FromSeconds(5);
                     var resp = await client.GetAsync(url);
-                    Log($"HTTP 连接 {name} 成功 ({(int)resp.StatusCode})");
-                    return true;
+                    Log($"HTTP 直连 {name} 成功 ({(int)resp.StatusCode})");
+                    anyOk = true;
                 }
                 catch (Exception ex)
                 {
-                    Log($"HTTP 连接 {name} 失败: {ex.Message}");
+                    Log($"HTTP 直连 {name} 失败: {ex.Message}");
                 }
             }
 
-            // 最后的尝试: 通过主机名 (需要 DNS AAAA 解析)
+            // 2. 请求 test-ipv6.com API 获取本机 IPv6 信息
+            try
+            {
+                using var client = new HttpClient();
+                client.Timeout = TimeSpan.FromSeconds(8);
+                client.DefaultRequestHeaders.Add("User-Agent", "IPv6Tool-App");
+                var json = await client.GetStringAsync("https://test-ipv6.com/api/");
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                string? ipv4 = root.TryGetProperty("ipv4", out var v4) ? v4.GetString() : null;
+                string? ipv6 = root.TryGetProperty("ipv6", out var v6) ? v6.GetString() : null;
+                string? country = root.TryGetProperty("country_code", out var cc) ? cc.GetString() : null;
+
+                Log($"test-ipv6.com: IPv4={ipv4 ?? "无"}, IPv6={ipv6 ?? "无"}, 地区={country ?? "未知"}");
+
+                if (!string.IsNullOrEmpty(ipv6) && ipv6 != "::")
+                {
+                    Log($"test-ipv6.com 检测到本机 IPv6 地址: {ipv6}");
+                    anyOk = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"test-ipv6.com API 请求失败: {ex.Message}");
+            }
+
+            // 3. 主机名尝试 (依赖 DNS AAAA)
             try
             {
                 using var client = new HttpClient();
@@ -679,13 +689,13 @@ namespace ipv66_重写_
                 var resp = await client.GetAsync("https://ipv6.baidu.com");
                 if (resp.IsSuccessStatusCode)
                 {
-                    Log("HTTP 连接 ipv6.baidu.com 成功，IPv6 连通正常。");
-                    return true;
+                    Log("HTTP 连接 ipv6.baidu.com 成功。");
+                    anyOk = true;
                 }
             }
             catch { }
 
-            return false;
+            return anyOk;
         }
 
         private static bool HasPublicIPv6()
