@@ -505,15 +505,21 @@ namespace ipv66_重写_
                     @"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters");
                 int disabled = key != null ? (int)(key.GetValue("DisabledComponents", 0) ?? 0) : 0;
 
-                ipv6Enabled = disabled == 0;
+                // 位 0 (0x01) = 禁用隧道接口 IPv6, 位 1 (0x02) = 禁用非隧道接口 IPv6
+                // 位 3 (0x20) = 优先 IPv4 而非 IPv6 (IPv6 仍可用)
+                bool ipv6Disabled = (disabled & 0x0F) != 0;
+                bool preferIPv4  = (disabled & 0x20) != 0;
+
+                ipv6Enabled = !ipv6Disabled;
                 ipv6Detected = true;
 
                 if (ipv6Enabled)
                 {
-                    SetStatus("IPv6 已启用", true);
+                    string note = preferIPv4 ? "（优先 IPv4）" : "";
+                    SetStatus($"IPv6 已启用 {note}", true);
                     btnEnableBig.Enabled = false;
                     btnDisableBig.Enabled = true;
-                    Log("IPv6 当前为启用状态。");
+                    Log($"IPv6 当前为启用状态。{(preferIPv4 ? " 注意: 设置为优先 IPv4，但 IPv6 可用。" : "")}");
                 }
                 else
                 {
@@ -523,7 +529,6 @@ namespace ipv66_重写_
                     Log($"IPv6 当前为禁用状态 {disabled switch
                     {
                         0xFF => "（全部接口禁用）",
-                        0x20 => "（优先 IPv4）",
                         0x21 => "（全部禁用 + 优先 IPv4）",
                         _   => $"(DisabledComponents = 0x{disabled:X2})"
                     }}");
