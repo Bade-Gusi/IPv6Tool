@@ -880,10 +880,10 @@ namespace ipv66_重写_
                     if (!line.Contains("IPv6", StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    // 提取冒号后的 IP 地址
-                    int colon = line.LastIndexOf(':');
+                    // 提取冒号后的 IP 地址 (注意 IPv6 地址本身含冒号，不能用 LastIndexOf)
+                    int colon = line.IndexOf(": ", StringComparison.Ordinal);
                     if (colon < 0) continue;
-                    string addr = line[(colon + 1)..].Trim();
+                    string addr = line[(colon + 2)..].Trim();
 
                     // 排除空值和无效 IP
                     if (string.IsNullOrEmpty(addr)) continue;
